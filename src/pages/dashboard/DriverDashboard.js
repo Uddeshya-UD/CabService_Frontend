@@ -1,6 +1,64 @@
-import React from 'react';
+import { useEffect, useState } from 'react';
+import { io } from 'socket.io-client';
 
-export default function DriverDashboard(){
+export default function DriverDashboard() {
+  
+  const [driver, setDriver] = useState(null);
+  const [socket, setSocket] = useState(null);
+  const [newBooking, setNewBooking] = useState(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    fetch('http://localhost:8080/api/users/profile', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then(data => setDriver(data.user || null));
+  }, []);
+
+  useEffect(() => {
+    if (driver && driver._id) {
+      const newSocket = io('http://localhost:8080');
+      setSocket(newSocket);
+      newSocket.emit('driverLogin', driver._id);
+
+      // Optional: Listen for driverList updates
+      newSocket.on('driverList', (list) => {
+        console.log('Online drivers:', list);
+      });
+
+      // Example: Listen for newBooking event
+      newSocket.on('newBooking', (booking) => {
+        alert(`New booking received: ${booking._id}`);
+        setNewBooking(booking);
+      });
+
+      return () => newSocket.disconnect();
+    }
+  }, [driver]);
+
+ const handleAcceptBooking = async () => {
+    if (newBooking && driver) {
+      try {
+        const token = localStorage.getItem('token');
+        await fetch(`http://localhost:8080/api/bookings/update`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            bookingId: newBooking._id,
+            status: "accepted"
+          })
+        });
+        setNewBooking(null);
+      } catch (error) {
+        console.error('Failed to accept booking:', error);
+      }
+    }
+  };
+
   return (
     <div className="container mt-5">
       <div className="card shadow">
@@ -8,6 +66,18 @@ export default function DriverDashboard(){
           <h2 className="mb-0">Driver Dashboard</h2>
         </div>
         <div className="card-body">
+          {newBooking && (
+            <div className="alert alert-info d-flex justify-content-between align-items-center">
+              <div>
+                <strong>New Booking!</strong><br />
+                Pickup: {newBooking.pickupLocation?.address}<br />
+                Drop: {newBooking.dropLocation?.address}
+              </div>
+              <button className="btn btn-success ms-3" onClick={handleAcceptBooking}>
+                Accept Booking
+              </button>
+            </div>
+          )}
           <div className="row text-center mb-4">
             <div className="col-md-4 mb-3">
               <div className="card border-primary">
